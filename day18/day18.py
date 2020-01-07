@@ -114,13 +114,13 @@ def compute_distances(labels, mapp):
 
         mapp_cpy = Map(mapp)
         mapp_cpy.set(startpos,'*')
-        wavefronts = [startpos]
+        wavefronts = [(startpos,set())]
         nsteps = 1
 
         while len(wavefronts) > 0:
 
             wavefronts_new = []
-            for wpos in wavefronts:
+            for wpos,doors_passed in wavefronts:
 
                 sur = get_surrounding_positions(wpos,mapp_cpy.height,mapp_cpy.width)
                 for pt in sur:
@@ -129,12 +129,17 @@ def compute_distances(labels, mapp):
                     if t in lowercase_alpha:
                         # we found a key!
                         if t > lbl:
-                            distances[lbl+t] = nsteps
+                            distances[lbl+t] = (nsteps,doors_passed)
                     if t != '*' and t!= '#':
+
+                        if t in uppercase_alpha:
+                            doors_passed = set(doors_passed)
+                            doors_passed.add(t)
+
                         mapp_cpy.set(pt,'*')
                         # line = mapp[pt[0]]
                         # mapp[pt[0]] = line[0:pt[1]]+'@'+line[pt[1]+1:]
-                        wavefronts_new.append(pt)
+                        wavefronts_new.append((pt,doors_passed))
 
             wavefronts = wavefronts_new
             nsteps += 1
@@ -145,7 +150,7 @@ def compute_distances(labels, mapp):
 def key_str(start,tgtset):
     return start+':'+''.join(sorted(tgtset))
 
-def get_optimal_path(dst, start, tgtset, distances):
+def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
     key = key_str(start,tgtset)
 
     if not key in dst:
@@ -153,25 +158,38 @@ def get_optimal_path(dst, start, tgtset, distances):
         if len(tgtset) == 1:
             for tgt in tgtset:
                 pair = ''.join(sorted([start,tgt]))
-                distance = distances[pair]
+                distance,required_doors = distances[pair]
+                required_keys = {d.lower() for d in required_doors}
                 path = start+tgt
+                if not required_keys.issubset(acquired_keys):
+                    distance = None
 
         else:
 
-            distance = 2**63-1
+            distance = None
             path = None
 
             for tgt in tgtset:
+
                 pair = ''.join(sorted([start,tgt]))
-                self_distance = distances[pair]
+                self_distance, required_doors = distances[pair]
+                required_keys = {d.lower() for d in required_doors}
+
+                if not required_keys.issubset(acquired_keys):
+                    continue
+                new_acquired_keys = set(acquired_keys)
+                new_acquired_keys.add(tgt)
 
                 rest = tgtset.difference({tgt})
 
-                d,p = get_optimal_path(dst,tgt,rest,distances)
+                d,p = get_optimal_path(dst,rest, tgt, new_acquired_keys, distances)
+
+                if not d or not p:
+                    continue
 
                 dd = d+self_distance
                 pp = start+p
-                if dd < distance:
+                if distance == None or dd < distance:
                     distance = dd
                     path = pp
 
@@ -188,13 +206,13 @@ def get_shortest_path_smart(mapp, pos):
     print("distances computed")
 
     # for k in distances:
-    #     print(k,distances[k])
+    #     print(k,distances[k][0], ''.join(sorted(distances[k][1])))
 
     optimal_paths = {}
 
-    dist,path = get_optimal_path(optimal_paths,'@',keyset, distances)
+    dist,path = get_optimal_path(optimal_paths,keyset, '@',set(), distances)
+    return path, dist
 
-    return path[1:],dist
 
 
 if len(sys.argv) != 2:
