@@ -46,6 +46,39 @@ class Map:
     def get_tile_locations(self,t):
         return [[i,j] for i in range(self.height) for j in range(self.width) if self.get([i,j])==t]
 
+
+class RecMap:
+    def __init__(self,*args):
+
+        if len(args)==1 and type(args[0]) == RecMap:
+            other = args[0]
+            # copy constructor
+            self.height = other.height
+            self.width = other.width
+            self.mapps = [Map(m) for m in other.mapps] # call copy constructor
+
+        else:
+            inp = args[0]
+            max_n_levels = args[1]
+            mapp = Map(inp)
+            self.height = mapp.height
+            self.width = mapp.width
+            self.mapps = [Map(mapp) for i in range(max_n_levels)]
+
+    def get_max_nonzero_level(self):
+        maxlvl = 0
+        for i,lvl in enumerate(self.mapps):
+            if len(lvl.get_tile_locations('@')) > 0:
+                maxlvl = max(maxlvl,i)
+
+        return maxlvl
+
+    def print(self):
+        maxlvl = self.get_max_nonzero_level()
+        for lvl in range(maxlvl+1):
+            print("Level {}".format(lvl))
+            self.mapps[lvl].print()
+
 def get_labels(mapp):
     labels = {}
 
@@ -82,7 +115,7 @@ def get_labels(mapp):
 
     return labels
 
-def find_shortest_path_len(mapp_in):
+def find_shortest_path_pt1(mapp_in):
 
     mapp = Map(mapp_in)
 
@@ -101,6 +134,8 @@ def find_shortest_path_len(mapp_in):
 
     target_found = False
     while not target_found and len(wavefronts) > 0:
+
+        print("number of wavefronts:",len(wavefronts))
 
         wavefronts_new = []
         for wpos in wavefronts:
@@ -136,22 +171,132 @@ def find_shortest_path_len(mapp_in):
         wavefronts = wavefronts_new
         nsteps += 1
         print("=== After {} steps ===".format(nsteps))
-        mapp.print()
+        # mapp.print()
 
     if not target_found:
         raise Exception("Failed finding path to target!")
     return nsteps
 
-if len(sys.argv) != 2:
+def find_shortest_path_pt2(rmapp_in):
+
+    rmapp = RecMap(rmapp_in)
+
+    labels = get_labels(rmapp.mapps[0])
+
+    startpos = labels['AA'][0]
+    target =   labels['ZZ'][0]
+    portals = {}
+    for k,v in labels.items():
+        if not len(v)==2:
+            continue
+
+        # this is a portal, now find which is inner outer port
+        center = [rmapp.height/2,rmapp.width/2]
+        # sort wrt distance from center
+        v.sort(key=lambda p: (p[0]-center[0])**2+(p[1]-center[1])**2)
+        # now the first element is an inner port and the second is the outer port
+        portals[k] = v
+
+    # for n in portals:
+    #     print(n,portals[n])
+
+    rmapp.mapps[0].set(startpos,'@')
+    wavefronts = [(startpos,0)]
+    nsteps = 0
+
+    target_found = False
+    while not target_found and len(wavefronts) > 0:
+
+        print("number of wavefronts:",len(wavefronts))
+
+        wavefronts_new = []
+        for wpos,lvl in wavefronts:
+
+            sur = [(p,lvl) for p in get_surrounding_positions(wpos,rmapp.height,rmapp.width)]
+            match_portals = [(k,v) for k,v in portals.items() if wpos in v]
+            if len(match_portals) > 1:
+                raise Exception("Unexpectedly matched more than one portal: {}".format(match_portals))
+            if len(match_portals) == 1:
+                label,portal = match_portals[0]
+                # print("point {} matched portal {}".format(wpos,portal))
+                if portal[0] == wpos:
+                    # we hit an inner portal, we will end up at an outer one
+                    newsur = portal[1]
+                    newsurlvl = lvl+1
+                else:
+                    # we hit an outer portal, we will end up at an inner one
+                    newsur = portal[0]
+                    newsurlvl = lvl-1
+
+                # print("adding new neighbor",newsur)
+                if newsurlvl < 0:
+                    print("Outer portals at level 0 doesn't work!")
+                elif newsurlvl == len(rmapp.mapps):
+                   print("Got stuck at portal {}, position {} at level {}".format(label,newsur,newsurlvl))
+                else:
+                    sur.append((newsur,newsurlvl))
+
+            for pt,slvl in sur:
+
+                t = rmapp.mapps[slvl].get(pt)
+
+                if t == '#' or t=='@' or t in uppercase_alpha:
+                    continue
+
+                if t == '.':
+                    rmapp.mapps[slvl].set(pt,'@')
+                    # line = mapp[pt[0]]
+                    # mapp[pt[0]] = line[0:pt[1]]+'@'+line[pt[1]+1:]
+                    if slvl==0 and pt == target:
+                        target_found = True
+                        break
+
+                    wavefronts_new.append((pt,slvl))
+
+        wavefronts = wavefronts_new
+        nsteps += 1
+        print("=== After {} steps ===".format(nsteps))
+        # rmapp.print()
+
+    if not target_found:
+        raise Exception("Failed finding path to target!")
+
+    # print("Finally:")
+    # rmapp.print()
+
+    return nsteps
+
+if len(sys.argv) < 2:
     print("Insufficient arguments!")
     sys.exit(1)
 
 the_input = open(sys.argv[1]).read().splitlines()
 
+print("==========")
+print("= Part 1 =")
+print("==========")
+
 mapp = Map(the_input)
 
 mapp.print()
 
-nsteps = find_shortest_path_len(mapp)
+nsteps = find_shortest_path_pt1(mapp)
 
+print("Reached target in {} steps".format(nsteps))
+
+
+print()
+print("==========")
+print("= Part 2 =")
+print("==========")
+
+
+
+if len(sys.argv) > 2:
+    max_n_levels = int(sys.argv[2])
+else:
+    max_n_levels = 12
+rmapp = RecMap(the_input,max_n_levels)
+
+nsteps = find_shortest_path_pt2(rmapp)
 print("Reached target in {} steps".format(nsteps))
