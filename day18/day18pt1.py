@@ -153,16 +153,22 @@ def key_str(start,tgtset):
 def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
     key = key_str(start,tgtset)
 
+    # print("get_optimal_path for {} ({})".format(key,acquired_keys))
+
     if not key in dst:
+        # print("key WAS NOT in dst")
 
         if len(tgtset) == 1:
             for tgt in tgtset:
+                # print("tgtset has len 1 ({})".format(tgt))
                 pair = ''.join(sorted([start,tgt]))
                 distance,required_doors = distances[pair]
                 required_keys = {d.lower() for d in required_doors}
                 path = start+tgt
                 if not required_keys.issubset(acquired_keys):
+                    # print("do not have enough keys: {} vs {}".format(required_keys,acquired_keys))
                     distance = None
+            # print("Found distance={} and path={}".format(distance,path))
 
         else:
 
@@ -170,12 +176,14 @@ def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
             path = None
 
             for tgt in tgtset:
+                # print("trying tgt {} in tgtset {}".format(tgt,tgtset))
 
                 pair = ''.join(sorted([start,tgt]))
                 self_distance, required_doors = distances[pair]
                 required_keys = {d.lower() for d in required_doors}
 
                 if not required_keys.issubset(acquired_keys):
+                    # print("do not have enough keys: {} vs {}".format(required_keys,acquired_keys))
                     continue
                 new_acquired_keys = set(acquired_keys)
                 new_acquired_keys.add(tgt)
@@ -185,6 +193,7 @@ def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
                 d,p = get_optimal_path(dst,rest, tgt, new_acquired_keys, distances)
 
                 if not d or not p:
+                    # print("optimal path for tgt {} has null distance ({}) or path ({})".format(tgt,d,p))
                     continue
 
                 dd = d+self_distance
@@ -193,9 +202,19 @@ def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
                     distance = dd
                     path = pp
 
+
         dst[key] = [distance,path]
+    # else:
+        # print("key WAS in dst")
+
 
     return dst[key]
+
+# distance with doors
+
+# distance from pos -> target with aquired_keys (-1 if blocked)
+
+# distance from pos -> targetkeys with aquired_keys
 
 def get_shortest_path_smart(mapp, pos):
 
@@ -206,13 +225,14 @@ def get_shortest_path_smart(mapp, pos):
     print("distances computed")
 
     # for k in distances:
-    #     print(k,distances[k][0], ''.join(sorted(distances[k][1])))
+        # print(k,distances[k][0], ''.join(sorted(distances[k][1])))
 
     optimal_paths = {}
 
     dist,path = get_optimal_path(optimal_paths,keyset, '@',set(), distances)
     return path, dist
 
+    # return path[1:],dist
 
 
 if len(sys.argv) != 2:
