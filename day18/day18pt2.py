@@ -16,7 +16,6 @@ def get_surrounding_positions(pos, height, width):
                 valid_pos.append(newpos)
     return valid_pos
 
-
 class Map:
     def __init__(self,arg):
         if type(arg) == Map:
@@ -42,70 +41,6 @@ class Map:
     def get_tile_locations(self,t):
         return [[i,j] for i in range(self.height) for j in range(self.width) if self.get([i,j])==t]
 
-    def get_accessible_keys(self,pos):
-
-        mapp = Map(self)
-        found_keys = []
-        wavefronts = [pos]
-        nsteps = 1
-
-        while len(wavefronts) > 0:
-
-            wavefronts_new = []
-            for wpos in wavefronts:
-
-                sur = get_surrounding_positions(wpos,self.height,self.width)
-                for pt in sur:
-                    t = mapp.get(pt)
-
-                    if t == '#' or t in uppercase_alpha:
-                        continue
-                    if t in lowercase_alpha:
-                        # we found a key!
-                        found_keys.append([t,pt,nsteps])
-                    if t == '.':
-                        mapp.set(pt,'@')
-                        # line = mapp[pt[0]]
-                        # mapp[pt[0]] = line[0:pt[1]]+'@'+line[pt[1]+1:]
-                        wavefronts_new.append(pt)
-
-            wavefronts = wavefronts_new
-            nsteps += 1
-
-        return found_keys
-
-
-def get_shortest_path_bruteforce(mapp, pos):
-
-    accessible_keys = mapp.get_accessible_keys(pos)
-
-    paths = []
-
-    for ak in accessible_keys:
-
-        key, kpos, kdist = ak
-        mapp_copy = Map(mapp)
-
-        # move position and remove key
-        mapp_copy.set(pos,'.')
-        mapp_copy.set(kpos,'@')
-        # remove door/block
-        door_locations = mapp_copy.get_tile_locations(key.upper())
-        for dl in door_locations:
-            mapp_copy.set(dl,'.')
-
-        keys,dist = get_shortest_path_bruteforce(mapp_copy,kpos)
-        paths.append([[key]+keys,dist+kdist])
-
-    if len(paths) == 0:
-        return [[],0]
-
-    paths.sort(key=lambda p: p[1])
-
-    return paths[0]
-
-
-
 def compute_distances(labels, mapp):
 
     distances = {}
@@ -124,116 +59,137 @@ def compute_distances(labels, mapp):
 
                 sur = get_surrounding_positions(wpos,mapp_cpy.height,mapp_cpy.width)
                 for pt in sur:
+
+                    doors_passed_cpy = set(doors_passed)
                     t = mapp_cpy.get(pt)
 
                     if t in lowercase_alpha:
                         # we found a key!
                         if t > lbl:
-                            distances[lbl+t] = (nsteps,doors_passed)
+                            distances[lbl+t] = (nsteps,doors_passed_cpy)
+
                     if t != '*' and t!= '#':
 
                         if t in uppercase_alpha:
-                            doors_passed = set(doors_passed)
-                            doors_passed.add(t)
+                            doors_passed_cpy.add(t)
 
                         mapp_cpy.set(pt,'*')
-                        # line = mapp[pt[0]]
-                        # mapp[pt[0]] = line[0:pt[1]]+'@'+line[pt[1]+1:]
-                        wavefronts_new.append((pt,doors_passed))
+                        wavefronts_new.append((pt,doors_passed_cpy))
 
             wavefronts = wavefronts_new
             nsteps += 1
 
-
     return distances
 
-def key_str(start,tgtset):
-    return start+':'+''.join(sorted(tgtset))
-
-def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
-    key = key_str(start,tgtset)
-
-    # print("get_optimal_path for {} ({})".format(key,acquired_keys))
-
-    if not key in dst:
-        # print("key WAS NOT in dst")
-
-        if len(tgtset) == 1:
-            for tgt in tgtset:
-                # print("tgtset has len 1 ({})".format(tgt))
-                pair = ''.join(sorted([start,tgt]))
-                distance,required_doors = distances[pair]
-                required_keys = {d.lower() for d in required_doors}
-                path = start+tgt
-                if not required_keys.issubset(acquired_keys):
-                    # print("do not have enough keys: {} vs {}".format(required_keys,acquired_keys))
-                    distance = None
-            # print("Found distance={} and path={}".format(distance,path))
-
+class SuperMap:
+    def __init__(self,arg):
+        if type(arg) == SuperMap:
+            self.submaps = [Map(sm) for sm in arg.submaps]
+            self.height = arg.height
+            self.width = arg.width
         else:
+            lines = arg
+            self.height = len(lines)
+            self.width = len(lines[0])
 
-            distance = None
-            path = None
+            splitrow = self.height//2
+            splitcol = self.width//2
+            sublines = [
+                [l[0:1+splitcol] for l in lines[0:1+splitrow]],
+                [l[splitcol:] for l in lines[0:1+splitrow]],
+                [l[0:1+splitcol] for l in lines[splitrow:]],
+                [l[splitcol:] for l in lines[splitrow:]]
+                ]
+            self.submaps = [Map(sl) for sl in sublines]
 
-            for tgt in tgtset:
-                # print("trying tgt {} in tgtset {}".format(tgt,tgtset))
+    def print(self):
+        # compact = False
+        compact = True
 
-                pair = ''.join(sorted([start,tgt]))
-                self_distance, required_doors = distances[pair]
+        for o in [0,2]:
+            if compact:
+                istart = 0 if o==0 else 1
+            else:
+                istart = 0
+            for l1,l2 in zip(self.submaps[o].teh_map[istart:],self.submaps[o+1].teh_map[istart:]):
+                if compact:
+                    print("{}{}".format(''.join(l1[:-1]),''.join(l2)))
+                else:
+                    print("{} {}".format(''.join(l1),''.join(l2)))
+
+            if not compact and o==0:
+                print()
+
+def key_str(starts,tgtsets):
+    return '{}:{}'.format(''.join(starts),''.join(sorted(set.union(*tgtsets))))
+
+def get_optimal_path(paths, tgtsets, starts, acquired_keys, distances):
+    key = key_str(starts,tgtsets)
+
+    if not key in paths:
+
+        distance = None
+        path = None
+        for mi in range(4):
+            for tgt in tgtsets[mi]:
+
+                pair = ''.join(sorted([starts[mi],tgt]))
+                self_distance, required_doors = distances[mi][pair]
                 required_keys = {d.lower() for d in required_doors}
 
                 if not required_keys.issubset(acquired_keys):
-                    # print("do not have enough keys: {} vs {}".format(required_keys,acquired_keys))
                     continue
+
                 new_acquired_keys = set(acquired_keys)
                 new_acquired_keys.add(tgt)
 
-                rest = tgtset.difference({tgt})
+                new_starts = list(starts)
+                new_starts[mi] = tgt
 
-                d,p = get_optimal_path(dst,rest, tgt, new_acquired_keys, distances)
+                new_tgtsets = [set(s) for s in tgtsets]
+                new_tgtsets[mi] = new_tgtsets[mi].difference({tgt})
 
-                if not d or not p:
-                    # print("optimal path for tgt {} has null distance ({}) or path ({})".format(tgt,d,p))
-                    continue
+                if sum(len(s) for s in new_tgtsets) == 0:
+                    d = 0
+                    p = ''
+                else:
+                    d,p = get_optimal_path(paths, new_tgtsets, new_starts, new_acquired_keys, distances)
 
                 dd = d+self_distance
-                pp = start+p
+                pp = tgt+p
                 if distance == None or dd < distance:
                     distance = dd
                     path = pp
 
+        if distance == None:
+            raise Exception("Didn't find any path for key={} - distance was None".format(key))
 
-        dst[key] = [distance,path]
-    # else:
-        # print("key WAS in dst")
+        paths[key] = [distance,path]
 
+    return paths[key]
 
-    return dst[key]
+def get_shortest_path(mapp: SuperMap):
 
-# distance with doors
+    keysets = []
+    distances = []
+    for i,sm in enumerate(mapp.submaps):
+        ks = {k for k in lowercase_alpha if sm.get_tile_locations(k)}
 
-# distance from pos -> target with aquired_keys (-1 if blocked)
+        locations=sorted(list(ks)+['@'])
+        dists = compute_distances(locations,sm)
+        # print("distances computed for map {}:".format(i))
+        # for k,v in dists.items():
+        #     dist,doors = v
+        #     print(k,dist, ''.join(sorted(doors)))
 
-# distance from pos -> targetkeys with aquired_keys
-
-def get_shortest_path_smart(mapp, pos):
-
-    keyset = {k for k in lowercase_alpha if mapp.get_tile_locations(k)}
-
-    locations=sorted(list(keyset)+['@'])
-    distances = compute_distances(locations,mapp)
-    print("distances computed")
-
-    # for k in distances:
-        # print(k,distances[k][0], ''.join(sorted(distances[k][1])))
+        distances.append(dists)
+        keysets.append(ks)
 
     optimal_paths = {}
+    starts = ['@','@','@','@']
 
-    dist,path = get_optimal_path(optimal_paths,keyset, '@',set(), distances)
+    dist,path = get_optimal_path(optimal_paths, keysets, starts, set(), distances)
     return path, dist
-
-    # return path[1:],dist
-
 
 if len(sys.argv) != 2:
     print("Insufficient arguments!")
@@ -241,20 +197,11 @@ if len(sys.argv) != 2:
 
 the_input = open(sys.argv[1]).read().splitlines()
 
-mapp = Map(the_input)
+mapp = SuperMap(the_input)
 
-mapp.print()
+# mapp.print()
 
-initial_pos = mapp.get_tile_locations('@')[0]
-print("Pos:",initial_pos)
-
-# path,dist = get_shortest_path_bruteforce(mapp,initial_pos)
-
-# print()
-# print("Shortest path:",''.join(path))
-# print("Distance:     ",dist)
-
-path,dist = get_shortest_path_smart(mapp,initial_pos)
+path,dist = get_shortest_path(mapp)
 
 print()
 print("Shortest path:",path)
