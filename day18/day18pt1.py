@@ -42,69 +42,6 @@ class Map:
     def get_tile_locations(self,t):
         return [[i,j] for i in range(self.height) for j in range(self.width) if self.get([i,j])==t]
 
-    def get_accessible_keys(self,pos):
-
-        mapp = Map(self)
-        found_keys = []
-        wavefronts = [pos]
-        nsteps = 1
-
-        while len(wavefronts) > 0:
-
-            wavefronts_new = []
-            for wpos in wavefronts:
-
-                sur = get_surrounding_positions(wpos,self.height,self.width)
-                for pt in sur:
-                    t = mapp.get(pt)
-
-                    if t == '#' or t in uppercase_alpha:
-                        continue
-                    if t in lowercase_alpha:
-                        # we found a key!
-                        found_keys.append([t,pt,nsteps])
-                    if t == '.':
-                        mapp.set(pt,'@')
-                        # line = mapp[pt[0]]
-                        # mapp[pt[0]] = line[0:pt[1]]+'@'+line[pt[1]+1:]
-                        wavefronts_new.append(pt)
-
-            wavefronts = wavefronts_new
-            nsteps += 1
-
-        return found_keys
-
-
-def get_shortest_path_bruteforce(mapp, pos):
-
-    accessible_keys = mapp.get_accessible_keys(pos)
-
-    paths = []
-
-    for ak in accessible_keys:
-
-        key, kpos, kdist = ak
-        mapp_copy = Map(mapp)
-
-        # move position and remove key
-        mapp_copy.set(pos,'.')
-        mapp_copy.set(kpos,'@')
-        # remove door/block
-        door_locations = mapp_copy.get_tile_locations(key.upper())
-        for dl in door_locations:
-            mapp_copy.set(dl,'.')
-
-        keys,dist = get_shortest_path_bruteforce(mapp_copy,kpos)
-        paths.append([[key]+keys,dist+kdist])
-
-    if len(paths) == 0:
-        return [[],0]
-
-    paths.sort(key=lambda p: p[1])
-
-    return paths[0]
-
-
 
 def compute_distances(labels, mapp):
 
@@ -150,13 +87,13 @@ def compute_distances(labels, mapp):
 def key_str(start,tgtset):
     return start+':'+''.join(sorted(tgtset))
 
-def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
+def get_optimal_path(paths, tgtset, start, acquired_keys, distances):
     key = key_str(start,tgtset)
 
     # print("get_optimal_path for {} ({})".format(key,acquired_keys))
 
-    if not key in dst:
-        # print("key WAS NOT in dst")
+    if not key in paths:
+        # print("key WAS NOT in paths")
 
         if len(tgtset) == 1:
             for tgt in tgtset:
@@ -190,7 +127,7 @@ def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
 
                 rest = tgtset.difference({tgt})
 
-                d,p = get_optimal_path(dst,rest, tgt, new_acquired_keys, distances)
+                d,p = get_optimal_path(paths,rest, tgt, new_acquired_keys, distances)
 
                 if not d or not p:
                     # print("optimal path for tgt {} has null distance ({}) or path ({})".format(tgt,d,p))
@@ -203,18 +140,12 @@ def get_optimal_path(dst, tgtset, start, acquired_keys, distances):
                     path = pp
 
 
-        dst[key] = [distance,path]
+        paths[key] = [distance,path]
     # else:
-        # print("key WAS in dst")
+        # print("key WAS in paths")
 
 
-    return dst[key]
-
-# distance with doors
-
-# distance from pos -> target with aquired_keys (-1 if blocked)
-
-# distance from pos -> targetkeys with aquired_keys
+    return paths[key]
 
 def get_shortest_path_smart(mapp, pos):
 
@@ -247,12 +178,6 @@ mapp.print()
 
 initial_pos = mapp.get_tile_locations('@')[0]
 print("Pos:",initial_pos)
-
-# path,dist = get_shortest_path_bruteforce(mapp,initial_pos)
-
-# print()
-# print("Shortest path:",''.join(path))
-# print("Distance:     ",dist)
 
 path,dist = get_shortest_path_smart(mapp,initial_pos)
 
