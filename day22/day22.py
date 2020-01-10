@@ -8,7 +8,7 @@ class Deck:
         self.cards = list(range(ncards))
 
     def __str__(self):
-        return ' '.join(str(n) for n in self.cards)
+        return ' '.join('{:2d}'.format(n) for n in self.cards)
 
     def cut(self,cutsize):
         self.cards = self.cards[cutsize:]+self.cards[:cutsize]
@@ -32,7 +32,7 @@ class Deck:
     def card_at_index(self,idx):
         return self.cards[idx]
 
-class FakeDeck:
+class SingleIndexDeck:
 
     def __init__(self,ncards,card_of_interest):
         self.size = ncards
@@ -76,7 +76,48 @@ class FakeDeck:
             raise Exception("Cannot query for any position but {} ({} was asked for)".format(self.card_pos,idx))
         return self.teh_card
 
-def shuffle_deck(deck,commands):
+class ExpressionDeck:
+    def __init__(self,ncards):
+        self.size = ncards
+        self.a = 1
+        self.b = 0
+
+    def card_at_index(self,k):
+        return (self.a*k+self.b)%self.size
+
+    def __str__(self):
+        return ' '.join('{:2d}'.format(self.card_at_index(k)) for k in range(self.size))
+
+    def cut(self,cutsize):
+        if cutsize < 0:
+            cutsize += self.size
+        self.b = (self.b+self.a*cutsize)%self.size
+
+    def deal_into_new(self):
+        self.b = (self.b+self.a*(self.size-1))%self.size
+        self.a = -self.a
+
+    def deal_with_increment(self,increment):
+        for i in range(increment):
+            c = self.size*i+1
+            if c%increment == 0:
+                factor = c//increment
+                break
+        self.a = (self.a*factor)%self.size
+
+    def inverse_deal_with_increment(self,increment):
+        self.cards,olddeck = [0]*self.size,self.cards
+        for i in range(self.size):
+            self.cards[i] = olddeck[(i*increment)%self.size]
+
+    def index_of_card(self,card):
+        return [i for i in range(self.size) if self.card_at_index(i)==card][0]
+
+
+
+def shuffle_deck(deck,commands,do_log_print=False):
+    if do_log_print:
+        print(deck)
     for line in commands:
         # print('{:24s} ->'.format(line),' '.join(str(n) for n in deck))
 
@@ -97,7 +138,8 @@ def shuffle_deck(deck,commands):
             deck.inverse_deal_with_increment(increment)
         else:
             raise Exception("Unknown shuffle instruction: {}".format(line))
-        # print('{:24s} ->'.format(''),' '.join(str(n) for n in deck))
+        if do_log_print:
+            print(deck)
 
 def inverse_commands(commands):
     rev_commands = []
@@ -120,35 +162,27 @@ def inverse_commands(commands):
             rev_commands.append(' '.join(command[1:]))
     return rev_commands
 
-
-if len(sys.argv) != 2:
-    print("Insufficient arguments!")
-    sys.exit(1)
-
-lines = open(sys.argv[1]).read().splitlines()
-
-print()
-print('## Part 1')
-print()
-decksize = 10007
-
-deck = Deck(decksize)
-# deck = FakeDeck(decksize,2019)
-
-# print("Initially:",deck)
-
-shuffle_deck(deck,lines)
-# print("Result:",deck)
-
-idx2019 = deck.index_of_card(2019)
-print("Index of 2019:",idx2019)
-
-
-if False:
+def do_part1(lines):
+    print('## Part 1')
     print()
-    print('## Part ?')
+    decksize = 10007
+
+    # deck = Deck(decksize)
+    deck = SingleIndexDeck(decksize,2019)
+    # deck = ExpressionDeck(decksize)
+
+    # print("Initially:",deck)
+
+    shuffle_deck(deck,lines)
+    # print("Result:",deck)
+
+    idx2019 = deck.index_of_card(2019)
+    print("Index of 2019:",idx2019)
     print()
-    print("Verifying inverse")
+
+def verify_inverse(lines):
+    print("## Verifying inverse")
+    print()
     lines_s4 = open('sample4').read().splitlines()
     revlines_s4 = inverse_commands(lines_s4)
 
@@ -168,34 +202,82 @@ if False:
     shuffle_deck(deck,revlines_s4)
     print("After inverse shuffle:",deck)
 
-    print("FakeDeck")
+    print("SingleIndexDeck")
 
-    deck = FakeDeck(decksize,7)
+    deck = SingleIndexDeck(decksize,7)
     print("Initially:",deck)
 
     shuffle_deck(deck,lines_s4)
     print("After shuffle:",deck)
     shuffle_deck(deck,revlines_s4)
     print("After inverse shuffle:",deck)
+    print()
 
-print()
-print('## Part 2')
-print()
 
-decksize = 119315717514047
-nshuffles = 101741582076661
+def expt_rec(a, b, mod):
+    if b == 0:
+        return 1
+    elif b % 2 == 1:
+        return (a * expt_rec(a, b - 1,mod))%mod
+    else:
+        p = expt_rec(a, b / 2,mod)
+        return (p * p)%mod
 
-revlines = inverse_commands(lines)
-deck = FakeDeck(decksize,2019)
+def geom_sum_rec(a,n,mod):
+    if n == 0:
+        return 1
+    elif n == 1:
+        return (1+a)%mod
+    elif n%2==0:
+        last_term = expt_rec(a,n,mod)
+        return (geom_sum_rec(a,n-1,mod)+last_term)%mod
+    else:
+        smaller = geom_sum_rec((a*a)%mod,(n-1)//2,mod)
+        return ((1+a)*smaller)%mod
 
-print("Initially:",deck)
+def do_part2(lines):
+    print('## Part 2')
+    print()
 
-for n in range(nshuffles):
-    shuffle_deck(deck,revlines)
-    idx2019 = deck.index_of_card(2019)
-    if n % 10000 == 0:
-        print("Shuffle {}: idx={}".format(n,idx2019))
-    if idx2019 == 2019:
-        print('BINGO! ... after {} steps'.format(n))
+    decksize = 119315717514047
+    nshuffles = 101741582076661
 
-print("Result:",deck)
+    deck = ExpressionDeck(decksize)
+    shuffle_deck(deck,lines)
+
+    a = deck.a
+    b = deck.b
+
+    a_final = expt_rec(a,nshuffles,decksize)
+    b_final = geom_sum_rec(a,nshuffles-1,decksize)
+    b_final = (b*b_final)%decksize
+
+    deck.a = a_final
+    deck.b = b_final
+
+    print("Done! Card[2020]={}".format(deck.card_at_index(2020)))
+
+if len(sys.argv) >= 2:
+
+    lines = open(sys.argv[1]).read().splitlines()
+
+    decksize = 25
+    if len(sys.argv) > 2:
+        decksize = int(sys.argv[2])
+
+    if len(sys.argv) > 3 and sys.argv[3]=='expr':
+        deck = ExpressionDeck(decksize)
+    else:
+        deck = Deck(decksize)
+
+    shuffle_deck(deck,lines,do_log_print=True)
+
+else:
+
+    lines = open('input').read().splitlines()
+
+    do_part1(lines)
+
+    verify_inverse(lines)
+
+    do_part2(lines)
